@@ -1,124 +1,120 @@
 import "./styles.css";
-
-const project = {
-  "sourceNo": 6,
-  "id": "hxyfront-62004",
-  "port": 62004,
-  "title": "滑雪板调校维护",
-  "domain": "滑雪装备调校",
-  "prompt": "我想做一个面向滑雪板调校店的装备维护前端系统，技师可以记录雪板品牌、长度、板型、刃角、打蜡类型、底板损伤、修补位置和客户偏好。页面需要有维护工单列表、刃角参数表、底板损伤标记区、完工状态筛选和客户历史维护记录。",
-  "palette": [
-    "#0369a1",
-    "#14b8a6",
-    "#f97316"
-  ],
-  "metrics": [
-    "待维护",
-    "完工工单",
-    "平均刃角",
-    "底板修补"
-  ],
-  "filters": [
-    "全地域",
-    "公园板",
-    "竞速板",
-    "粉雪板"
-  ],
-  "fields": [
-    "雪板品牌",
-    "长度",
-    "板型",
-    "刃角",
-    "打蜡类型",
-    "底板损伤"
-  ],
-  "records": [
-    [
-      "ORD-106",
-      "Burton 156",
-      "侧刃88°，底刃1°",
-      "已打低温蜡"
-    ],
-    [
-      "ORD-112",
-      "竞速板165",
-      "底板划痕12cm",
-      "待补P-Tex"
-    ],
-    [
-      "ORD-118",
-      "粉雪板158",
-      "客户偏好弱咬雪",
-      "待交付"
-    ]
-  ]
-};
+import { useMemo, useState } from "react";
+import type { BoardModel } from "./types";
+import { useWorkshop } from "./hooks/useWorkshop";
+import { Sidebar, type StatusFilter } from "./components/Sidebar";
+import { NewOrderForm } from "./components/NewOrderForm";
+import { OrderCard } from "./components/OrderCard";
+import { blockingDamages } from "./rules";
 
 function App() {
+  const workshop = useWorkshop();
+  const [boardFilter, setBoardFilter] = useState<BoardModel | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [customerFilter, setCustomerFilter] = useState<string | "all">("all");
+
+  const metrics = useMemo(() => {
+    const inProgress = workshop.orders.filter((o) => o.status === "in_progress").length;
+    const completed = workshop.orders.filter((o) => o.status === "completed").length;
+    const pendingDamages = workshop.orders.reduce(
+      (sum, o) => sum + blockingDamages(o).length,
+      0
+    );
+    const angles = workshop.orders.map((o) => o.edge.side);
+    const avgSide =
+      angles.length > 0
+        ? (angles.reduce((a, b) => a + b, 0) / angles.length).toFixed(1) + "°"
+        : "—";
+    return { inProgress, completed, avgSide, pendingDamages };
+  }, [workshop.orders]);
+
+  const visibleOrders = useMemo(() => {
+    return workshop.orders.filter((o) => {
+      if (statusFilter !== "all" && o.status !== statusFilter) return false;
+      if (boardFilter !== "all" && o.boardModel !== boardFilter) return false;
+      if (customerFilter !== "all" && o.customerName !== customerFilter) return false;
+      return true;
+    });
+  }, [workshop.orders, statusFilter, boardFilter, customerFilter]);
+
   return (
     <main className="app">
-      <section className="hero">
-        <p>{project.id} · 源提示词{project.sourceNo} · Port {project.port}</p>
-        <h1>{project.title}</h1>
-        <span>{project.prompt}</span>
+      <section className="hero compact">
+        <p>hxyfront-62004 · 滑雪板调校维护台</p>
+        <h1>雪板维护台</h1>
+        <span>
+          登记品牌、长度、板型、刃角、蜡型与客户偏好；底板伤按「待修补 / 已修补 / 无需处理」标记，
+          待修补未处理清楚时不能完工。数据存本机，重开仍在。
+        </span>
       </section>
 
       <section className="metrics">
-        {project.metrics.map((metric: string, index: number) => (
-          <article key={metric}>
-            <small>{metric}</small>
-            <strong>{[86, 14, 7, 32][index] ?? 12}</strong>
-          </article>
-        ))}
+        <article>
+          <small>维修中工单</small>
+          <strong>{metrics.inProgress}</strong>
+        </article>
+        <article>
+          <small>完工工单</small>
+          <strong>{metrics.completed}</strong>
+        </article>
+        <article>
+          <small>平均侧刃角</small>
+          <strong>{metrics.avgSide}</strong>
+        </article>
+        <article>
+          <small>待修补底板伤</small>
+          <strong>{metrics.pendingDamages}</strong>
+        </article>
       </section>
 
       <section className="workspace">
-        <aside className="panel">
-          <h2>{project.domain}筛选</h2>
-          <div className="chips">
-            {project.filters.map((item: string) => (
-              <button key={item}>{item}</button>
-            ))}
-          </div>
-        </aside>
+        <Sidebar
+          customers={workshop.customers}
+          boardFilter={boardFilter}
+          statusFilter={statusFilter}
+          customerFilter={customerFilter}
+          onBoardChange={setBoardFilter}
+          onStatusChange={setStatusFilter}
+          onCustomerChange={setCustomerFilter}
+          onPreferenceChange={workshop.updateCustomerPreference}
+        />
 
-        <section className="panel form-panel">
-          <div className="heading">
-            <div>
-              <p>专业字段</p>
-              <h2>新增记录</h2>
-            </div>
-            <button className="primary">保存草稿</button>
-          </div>
-          <div className="field-grid">
-            {project.fields.map((field: string) => (
-              <label key={field}>
-                <span>{field}</span>
-                <input placeholder={"填写" + field} />
-              </label>
-            ))}
-          </div>
-        </section>
-      </section>
+        <div className="main-col">
+          <NewOrderForm customers={workshop.customers} onCreate={workshop.createOrder} />
 
-      <section className="panel">
-        <div className="heading">
-          <div>
-            <p>历史记录</p>
-            <h2>近期工作台</h2>
-          </div>
-          <button>导出摘要</button>
-        </div>
-        <div className="records">
-          {project.records.map((record: string[], index: number) => (
-            <article key={record.join("-")}>
-              <b>{String(index + 1).padStart(2, "0")}</b>
+          <section className="panel order-panel">
+            <div className="heading">
               <div>
-                <h3>{record[0]}</h3>
-                <p>{record.slice(1).join(" · ")}</p>
+                <p>维护工单列表</p>
+                <h2>
+                  工作台
+                  <span className="result-count">{visibleOrders.length} 张</span>
+                </h2>
               </div>
-            </article>
-          ))}
+              <button className="ghost-btn" onClick={workshop.resetAll}>
+                恢复演示数据
+              </button>
+            </div>
+
+            {visibleOrders.length === 0 ? (
+              <p className="empty-line">
+                当前筛选下没有工单——把完工状态切到「已完工」才能看到处理清楚并完工的工单。
+              </p>
+            ) : (
+              <div className="order-list">
+                {visibleOrders.map((order) => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    onAddDamage={workshop.addDamage}
+                    onSetDamageStatus={workshop.setDamageStatus}
+                    onComplete={workshop.completeOrder}
+                    onReopen={workshop.reopenOrder}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </section>
     </main>
